@@ -7,6 +7,20 @@ from datetime import datetime
 from selenium.webdriver.remote.webelement import WebElement
 import undetected_chromedriver as uc
 import pandas as pd
+import nltk
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+import string
+
+nltk.download('stopwords')
+nltk.download('punkt')
+nltk.download('punkt_tab')
+
+def clean_tokens(text):
+    tokens = word_tokenize(text.lower())  # lowercase + tokenizare
+    tokens = [word for word in tokens if word not in stopwords.words('english')]  # elimină stopwords
+    tokens = [word for word in tokens if word.isalnum()]  # păstrează doar cuvintele alfanumerice (fără punctuație)
+    return tokens
 
 # Verifică argumentele din linia de comandă
 if len(sys.argv) < 4:
@@ -43,12 +57,12 @@ driver.execute_cdp_cmd(
 url = f"https://hansard.parliament.uk/"
 print(f"Navigating to {url}")
 driver.get(url)
-time.sleep(3)
+time.sleep(2)
 
 # Selectare camera (House)
 houseToGo = driver.find_element(By.XPATH, f'//a[@href="/search/Debates?house={house}"]')
 houseToGo.click()
-time.sleep(5)
+time.sleep(2)
 
 # Setare interval de dată
 try:
@@ -72,7 +86,7 @@ except Exception as e:
     driver.quit()
     sys.exit(1)
 
-time.sleep(5)
+time.sleep(2)
 
 def get_direct_text(element: WebElement) -> str:
     return element.get_attribute("innerHTML").split('<')[0].strip()
@@ -116,7 +130,7 @@ while True:
     next_page_anchors = driver.find_elements(By.XPATH, '//a[@title="Go to next page"]')
     if next_page_anchors:
         next_page_anchors[0].click()
-        time.sleep(5)
+        time.sleep(2)
     else:
         break
 
@@ -127,7 +141,7 @@ politicians = []
 for i, debate_link in enumerate(debate_links):
     print(f"Processing debate {i + 1}/{len(debate_links)}: {debate_link}")
     driver.get(debate_link)
-    time.sleep(3)
+    time.sleep(2)
     try:
         contributions = driver.find_elements(By.CLASS_NAME, "debate-item-contributiondebateitem")
         if not contributions:
@@ -185,7 +199,8 @@ for i, debate_link in enumerate(debate_links):
                     "name": name,
                     "party": party,
                     "sex": sex,
-                    "contribution": texts[i]
+                    "contribution": texts[i],
+                    "title": title
                 })
             except Exception as e:
                 print(f"Error extracting politician {i + 1} info:", e)
@@ -292,10 +307,27 @@ for i, debate_link in enumerate(debate_links):
 df = pd.DataFrame(results)
 df_politicians = pd.DataFrame(politicians)
 
+df_p = df.copy()
+df_p_politicians = df_politicians.copy()
+
+df_p["word"] = df["text"].apply(clean_tokens)
+df_p_politicians["word"] = df_politicians["contribution"].apply(clean_tokens)
+
+df_p = df_p.explode("word")
+df_p_politicians = df_p_politicians.explode("word")
+
+df_filtered = df_p[~df_p['word'].isin(stopwords.words('english'))]
+df_politicians_filtered = df_p_politicians[~df_p_politicians['word'].isin(stopwords.words('english'))]
+
+
 print(df.head())
-print(df_politicians)
+print(df_politicians.head())
+print(df_filtered.head())
+print(df_politicians_filtered.head())
 
 driver.quit()
 
+df_filtered.to_csv("debates_filtered.csv", index=False)
+df_politicians_filtered.to_csv("politicians_filtered.csv", index=False)
 df.to_csv("debates.csv", index=False)
 df_politicians.to_csv("politicians.csv", index=False)
