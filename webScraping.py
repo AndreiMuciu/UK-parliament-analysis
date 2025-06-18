@@ -138,6 +138,8 @@ while True:
 results = []
 politicians = []
 
+politician_cache = {}
+
 for i, debate_link in enumerate(debate_links):
     print(f"Processing debate {i + 1}/{len(debate_links)}: {debate_link}")
     driver.get(debate_link)
@@ -157,6 +159,8 @@ for i, debate_link in enumerate(debate_links):
                 print("Error extracting contribution content:", e)
                 continue
         title = driver.find_element(By.CLASS_NAME, "hero-banner").find_element(By.TAG_NAME, "h1").text
+        if title == "Lords Chamber":      # Skip if the title is just "Lords Chamber"
+            continue
         date = driver.find_element(By.CLASS_NAME, "hero-banner").find_element(By.TAG_NAME, "h2").text.split(" on ")[1]
     except Exception as e:
         print("Error extracting title or date:", e)
@@ -188,6 +192,16 @@ for i, debate_link in enumerate(debate_links):
         print("Error extracting results for debate:", e)
     try:
         for i, extracted_link in enumerate(extracted_links):
+            memberId = extracted_link.split("memberId=")[-1]
+            if memberId in politician_cache: 
+                politicians.append({
+                    "name": politician_cache[memberId]["name"],
+                    "party": politician_cache[memberId]["party"],
+                    "sex": politician_cache[memberId]["sex"],
+                    "contribution": texts[i],
+                    "title": title
+                })
+                continue
             try:
                 driver.get(extracted_link)
                 time.sleep(2)
@@ -202,6 +216,11 @@ for i, debate_link in enumerate(debate_links):
                     "contribution": texts[i],
                     "title": title
                 })
+                politician_cache[memberId] = {
+                    "name": name,
+                    "party": party,
+                    "sex": sex
+                }
             except Exception as e:
                 print(f"Error extracting politician {i + 1} info:", e)
                 continue
@@ -304,6 +323,8 @@ for i, debate_link in enumerate(debate_links):
 #    print("Error extracting debates and politicians:", e)
 
 # Salvare date
+print("Saving results...")
+
 df = pd.DataFrame(results)
 df_politicians = pd.DataFrame(politicians)
 
@@ -318,6 +339,12 @@ df_p_politicians = df_p_politicians.explode("word")
 
 df_filtered = df_p[~df_p['word'].isin(stopwords.words('english'))]
 df_politicians_filtered = df_p_politicians[~df_p_politicians['word'].isin(stopwords.words('english'))]
+
+if "text" in df_filtered.columns:
+    df_filtered = df_filtered.drop(columns=["text"])
+
+if "contribution" in df_politicians_filtered.columns:
+    df_politicians_filtered = df_politicians_filtered.drop(columns=["contribution"])
 
 
 print(df.head())
